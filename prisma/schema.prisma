@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int            @id @default(autoincrement())
+  username     String         @unique
+  email        String         @unique
+  password     String
+  role         String         @default("PLAYER")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  
+  ownedTeams   Team[]         @relation("TeamOwner")
+  teamMembers  TeamMember[]
+  registrations Registration[]
+  
+  @@map("users")
+}
+
+model Team {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  tag         String       @unique
+  game        String
+  ownerId     Int
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  owner       User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     TeamMember[]
+  registrations Registration[]
+  
+  @@map("teams")
+}
+
+model TeamMember {
+  id        Int      @id @default(autoincrement())
+  teamId    Int
+  userId    Int
+  role      String   @default("player")
+  joinedAt  DateTime @default(now())
+  
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model Tournament {
+  id            Int            @id @default(autoincrement())
+  name          String
+  game          String
+  startDate     DateTime
+  endDate       DateTime
+  maxTeams      Int
+  status        String         @default("UPCOMING")
+  prizePool     Float?
+  rules         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  registrations Registration[]
+  
+  @@map("tournaments")
+}
+
+model Registration {
+  id           Int                @id @default(autoincrement())
+  tournamentId Int
+  teamId       Int
+  userId       Int
+  status       String             @default("PENDING")
+  registeredAt DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  
+  tournament   Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  team         Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([tournamentId, teamId])
+  @@map("registrations")
+}

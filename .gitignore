@@ -26,3 +26,4 @@ build/
 
 # Coverage
 coverage/
+/src/generated/prisma

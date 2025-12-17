@@ -1,0 +1,45 @@
+{
+  "name": "esports-api-v2",
+  "version": "1.0.0",
+  "description": "API de gestion de tournois e-sport",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "prisma:init": "prisma init --datasource-provider sqlite",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:generate": "prisma generate",
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "node prisma/seed.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeBitord/ESPORTS-API-V2.git"
+  },
+  "keywords": [
+    "esport",
+    "tournament",
+    "api",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/LeBitord/ESPORTS-API-V2/issues"
+  },
+  "homepage": "https://github.com/LeBitord/ESPORTS-API-V2#readme",
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11",
+    "prisma": "^5.22.0"
+  }
+}
