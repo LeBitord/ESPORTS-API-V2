@@ -1,4 +1,4 @@
-const tournamentService = require('../services/tournament.service');
+import tournamentService from '../services/tournament.service.js';
 
 class TournamentController {
   async create(req, res) {
@@ -66,4 +66,4 @@ class TournamentController {
   }
 }
 
-module.exports = new TournamentController();
+export default new TournamentController();

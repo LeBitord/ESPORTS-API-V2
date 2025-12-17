@@ -1,42 +1,37 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
+import helmet from 'helmet';
 import authRoutes from './routes/auth.routes.js';
-
-dotenv.config();
+import tournamentRoutes from './routes/tournament.routes.js';
+import teamRoutes from './routes/team.routes.js';
 
 const app = express();
 
-// Middlewares globaux
+// Middlewares
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Route de test
-app.get('/', (req, res) => {
-  res.json({ 
-    message: '🎮 Esports API v2',
-    status: 'running',
-    timestamp: new Date().toISOString()
-  });
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/tournaments', tournamentRoutes);
+app.use('/api/teams', teamRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Routes API
-app.use('/api/auth', authRoutes);
-
-
-// Gestion des erreurs 404
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Gestion des erreurs globales
+// Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ 
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
+  res.status(500).json({ error: 'Something went wrong!' });
 });
 
 export default app;

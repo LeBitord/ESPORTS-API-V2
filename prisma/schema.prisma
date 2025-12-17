@@ -19,6 +19,7 @@ model User {
   ownedTeams   Team[]         @relation("TeamOwner")
   teamMembers  TeamMember[]
   registrations Registration[]
+  organizedTournaments Tournament[] @relation("OrganizedTournaments")
   
   @@map("users")
 }
@@ -63,8 +64,11 @@ model Tournament {
   status        String         @default("UPCOMING")
   prizePool     Float?
   rules         String?
+  organizerId   Int
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+
+  organizer     User           @relation("OrganizedTournaments", fields: [organizerId], references: [id], onDelete: Cascade)
   
   registrations Registration[]
   

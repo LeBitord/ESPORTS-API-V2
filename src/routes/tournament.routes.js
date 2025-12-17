@@ -1,7 +1,8 @@
-const express = require('express');
+import express from 'express';
+import tournamentController from '../controllers/tournament.controller.js';
+import { authenticate } from '../middlewares/auth.js';
+
 const router = express.Router();
-const tournamentController = require('../controllers/tournament.controller');
-const { authenticate } = require('../middleware/auth.middleware');
 
 // Routes publiques
 router.get('/', tournamentController.getAll);
@@ -12,4 +13,4 @@ router.post('/', authenticate, tournamentController.create);
 router.put('/:id', authenticate, tournamentController.update);
 router.delete('/:id', authenticate, tournamentController.delete);
 
-module.exports = router;
+export default router;
