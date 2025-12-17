@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import authRoutes from './routes/auth.routes.js';
 import tournamentRoutes from './routes/tournament.routes.js';
 import teamRoutes from './routes/team.routes.js';
+import registrationRoutes from './routes/registration.routes.js';
 
 const app = express();
 
@@ -12,11 +13,13 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api/registrations', registrationRoutes);
 
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tournaments', tournamentRoutes);
 app.use('/api/teams', teamRoutes);
+app.use('/api/registrations', registrationRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
