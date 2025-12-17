@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import authRoutes from './routes/auth.routes.js';
 
 dotenv.config();
 
@@ -20,10 +21,9 @@ app.get('/', (req, res) => {
   });
 });
 
-// Routes API (on les ajoutera après)
-// app.use('/api/auth', authRoutes);
-// app.use('/api/users', userRoutes);
-// etc...
+// Routes API
+app.use('/api/auth', authRoutes);
+
 
 // Gestion des erreurs 404
 app.use((req, res) => {
