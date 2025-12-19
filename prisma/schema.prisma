@@ -36,6 +36,10 @@ model Team {
   owner       User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members     TeamMember[]
   registrations Registration[]
+
+  matchesAsTeamA Match[] @relation("TeamAMatches")
+  matchesAsTeamB Match[] @relation("TeamBMatches")
+  wonMatches     Match[] @relation("WinnerMatches")
   
   @@map("teams")
 }
@@ -71,6 +75,8 @@ model Tournament {
   organizer     User     @relation("OrganizedTournaments", fields: [organizerId], references: [id])
   
   registrations Registration[]
+   
+   matches       Match[]
 
   @@map("tournaments")
 }
@@ -89,4 +95,30 @@ model Registration {
 
   @@unique([tournamentId, teamId])
   @@map("registrations")
+}
+
+model Match {
+  id            Int      @id @default(autoincrement())
+  tournamentId  Int
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  
+  teamAId       Int
+  teamA         Team     @relation("TeamAMatches", fields: [teamAId], references: [id])
+  
+  teamBId       Int
+  teamB         Team     @relation("TeamBMatches", fields: [teamBId], references: [id])
+  winner        Team?      @relation("WinnerMatches", fields: [winnerId], references: [id])
+  
+  scheduledAt   DateTime
+  status        String @default("SCHEDULED")
+  phase         String?
+  
+  scoreTeamA    Int?
+  scoreTeamB    Int?
+  winnerId      Int?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("matches")
 }
