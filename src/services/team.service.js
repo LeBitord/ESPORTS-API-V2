@@ -1,7 +1,24 @@
 import prisma from '../config/database.js';
+import BaseService from './base.service.js';
 
-class TeamService {
+class TeamService extends BaseService {
+  constructor() {
+    super('team');
+  }
+
+  /**
+   * Créer une équipe
+   */
   async createTeam(data, userId) {
+    // Vérifier unicité du tag
+    const existingTag = await prisma.team.findFirst({
+      where: { tag: data.tag }
+    });
+
+    if (existingTag) {
+      throw new Error('Team tag already exists');
+    }
+
     return await prisma.team.create({
       data: {
         name: data.name,
@@ -10,38 +27,23 @@ class TeamService {
         ownerId: userId
       },
       include: {
-        owner: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        },
+        owner: { select: this.userSelect },
         members: {
           include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                email: true
-              }
-            }
+            user: { select: this.userSelect }
           }
         }
       }
     });
   }
 
+  /**
+   * Récupérer toutes les équipes
+   */
   async getAllTeams() {
     return await prisma.team.findMany({
       include: {
-        owner: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        },
+        owner: { select: this.userSelect },
         _count: {
           select: {
             members: true,
@@ -49,117 +51,129 @@ class TeamService {
           }
         }
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { createdAt: 'desc' }
     });
   }
 
+  /**
+   * Récupérer une équipe par ID
+   */
   async getTeamById(id) {
-    const team = await prisma.team.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        },
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                email: true
-              }
-            }
-          }
-        },
-        registrations: {
-          include: {
-            tournament: {
-              select: {
-                id: true,
-                name: true,
-                status: true
-              }
+    return await this.findByIdOrFail(id, {
+      owner: { select: this.userSelect },
+      members: {
+        include: {
+          user: { select: this.userSelect }
+        }
+      },
+      registrations: {
+        include: {
+          tournament: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              startDate: true
             }
           }
         }
       }
     });
-
-    if (!team) {
-      throw new Error('Team not found');
-    }
-
-    return team;
   }
 
+  /**
+   * Mettre à jour une équipe
+   */
   async updateTeam(id, data, userId, userRole) {
-    const team = await this.getTeamById(id);
+    const parsedId = this.parseId(id);
+    const team = await this.getTeamById(parsedId);
 
-    if (team.ownerId !== userId && userRole !== 'ADMIN') {
-      throw new Error('Not authorized to update this team');
+    this.checkAuthorization(team.ownerId, userId, userRole, 'update');
+
+    const updateData = {};
+
+    if (data.name) updateData.name = data.name;
+    if (data.game) updateData.game = data.game;
+
+    // Vérifier unicité du tag si changé
+    if (data.tag && data.tag !== team.tag) {
+      const existingTag = await prisma.team.findFirst({
+        where: { tag: data.tag }
+      });
+
+      if (existingTag) {
+        throw new Error('Team tag already exists');
+      }
+
+      updateData.tag = data.tag;
     }
 
     return await prisma.team.update({
-      where: { id: parseInt(id) },
-      data: {
-        name: data.name,
-        tag: data.tag,
-        game: data.game
-      },
+      where: { id: parsedId },
+      data: updateData,
       include: {
-        owner: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        },
+        owner: { select: this.userSelect },
         members: {
           include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                email: true
-              }
-            }
+            user: { select: this.userSelect }
           }
         }
       }
     });
   }
 
+  /**
+   * Supprimer une équipe
+   */
   async deleteTeam(id, userId, userRole) {
-    const team = await this.getTeamById(id);
+    const parsedId = this.parseId(id);
+    const team = await this.getTeamById(parsedId);
 
-    if (team.ownerId !== userId && userRole !== 'ADMIN') {
-      throw new Error('Not authorized to delete this team');
+    this.checkAuthorization(team.ownerId, userId, userRole, 'delete');
+
+    // Vérifier qu'il n'y a pas d'inscriptions actives
+    const activeRegistrations = await prisma.registration.count({
+      where: {
+        teamId: parsedId,
+        status: { in: ['PENDING', 'APPROVED'] }
+      }
+    });
+
+    if (activeRegistrations > 0) {
+      throw new Error('Cannot delete team with active tournament registrations');
     }
 
     await prisma.team.delete({
-      where: { id: parseInt(id) }
+      where: { id: parsedId }
     });
   }
 
-  async addMember(teamId, userId, memberId, userRole) {
-    const team = await this.getTeamById(teamId);
+  /**
+   * Ajouter un membre
+   */
+  async addMember(teamId, memberId, userId, userRole) {
+    const parsedTeamId = this.parseId(teamId, 'teamId');
+    const parsedMemberId = this.parseId(memberId, 'memberId');
 
-    if (team.ownerId !== userId && userRole !== 'ADMIN') {
-      throw new Error('Not authorized to add members to this team');
+    const team = await this.getTeamById(parsedTeamId);
+
+    this.checkAuthorization(team.ownerId, userId, userRole, 'add members to');
+
+    // Vérifier que le membre existe
+    const member = await prisma.user.findUnique({
+      where: { id: parsedMemberId }
+    });
+
+    if (!member) {
+      throw new Error('User not found');
     }
 
-    // Vérifier si le membre existe déjà
+    // Vérifier doublon
     const existingMember = await prisma.teamMember.findUnique({
       where: {
         teamId_userId: {
-          teamId: parseInt(teamId),
-          userId: parseInt(memberId)
+          teamId: parsedTeamId,
+          userId: parsedMemberId
         }
       }
     });
@@ -170,39 +184,36 @@ class TeamService {
 
     return await prisma.teamMember.create({
       data: {
-        teamId: parseInt(teamId),
-        userId: parseInt(memberId),
-        role: 'player'
+        teamId: parsedTeamId,
+        userId: parsedMemberId,
+        role: 'MEMBER'
       },
       include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        }
+        user: { select: this.userSelect }
       }
     });
   }
 
+  /**
+   * Retirer un membre
+   */
   async removeMember(teamId, memberId, userId, userRole) {
-    const team = await this.getTeamById(teamId);
+    const parsedTeamId = this.parseId(teamId, 'teamId');
+    const parsedMemberId = this.parseId(memberId, 'memberId');
 
-    if (team.ownerId !== userId && userRole !== 'ADMIN') {
-      throw new Error('Not authorized to remove members from this team');
-    }
+    const team = await this.getTeamById(parsedTeamId);
 
-    // Ne pas permettre de retirer le propriétaire
-    if (parseInt(memberId) === team.ownerId) {
+    this.checkAuthorization(team.ownerId, userId, userRole, 'remove members from');
+
+    if (parsedMemberId === team.ownerId) {
       throw new Error('Cannot remove team owner');
     }
 
     await prisma.teamMember.delete({
       where: {
         teamId_userId: {
-          teamId: parseInt(teamId),
-          userId: parseInt(memberId)
+          teamId: parsedTeamId,
+          userId: parsedMemberId
         }
       }
     });

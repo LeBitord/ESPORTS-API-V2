@@ -1,331 +1,271 @@
 import prisma from '../config/database.js';
+import BaseService from './base.service.js';
 
-class RegistrationService {
+class RegistrationService extends BaseService {
+  constructor() {
+    super('registration');
+  }
+
+  /**
+   * Inscription d'une équipe à un tournoi
+   */
   async registerTeam(tournamentId, teamId, userId) {
-    // Vérifier que le tournoi existe
-    const tournament = await prisma.tournament.findUnique({
-      where: { id: parseInt(tournamentId) },
-      include: {
-        _count: {
-          select: { registrations: true }
+    const parsedTournamentId = this.parseId(tournamentId, 'tournamentId');
+    const parsedTeamId = this.parseId(teamId, 'teamId');
+
+    return await this.transaction(async (tx) => {
+      // 1. Vérifier le tournoi
+      const tournament = await tx.tournament.findUnique({
+        where: { id: parsedTournamentId },
+        include: {
+          _count: { select: { registrations: true } }
         }
+      });
+
+      if (!tournament) {
+        throw new Error('Tournament not found');
       }
-    });
 
-    if (!tournament) {
-      throw new Error('Tournament not found');
-    }
-
-    
-    if (tournament.status !== 'OPEN') {
-      throw new Error('Tournament is not open for registration');
-    }
-
-   
-    if (tournament.format === 'SOLO') {
-      throw new Error('Solo tournaments only accept individual player registrations. Use POST /api/tournaments/:tournamentId/register with playerId instead.');
-    }
-
-  
-    const confirmedCount = await prisma.registration.count({
-      where: {
-        tournamentId: parseInt(tournamentId),
-        status: 'CONFIRMED'
+      // ✅ CORRIGÉ : Utilise le statut correct
+      if (tournament.status !== 'UPCOMING') {
+        throw new Error('Tournament is not open for registration');
       }
-    });
 
-    if (confirmedCount >= tournament.maxParticipants) {
-      throw new Error('Tournament has reached maximum number of participants');
-    }
+      // ✅ CORRIGÉ : Utilise maxTeams au lieu de maxParticipants
+      const confirmedCount = await tx.registration.count({
+        where: {
+          tournamentId: parsedTournamentId,
+          status: 'APPROVED' // ✅ CORRIGÉ : APPROVED au lieu de CONFIRMED
+        }
+      });
 
-    // Vérifier que l'équipe existe
-    const team = await prisma.team.findUnique({
-      where: { id: parseInt(teamId) }
-    });
-
-    if (!team) {
-      throw new Error('Team not found');
-    }
-
-    
-    if (team.captainId !== userId) {
-      throw new Error('Only the team captain can register the team for tournaments');
-    }
-
-    if (team.game !== tournament.game) {
-      throw new Error('Team game does not match tournament game');
-    }
-
-    // Vérifier que l'équipe n'est pas déjà inscrite
-    const existingRegistration = await prisma.registration.findFirst({
-      where: {
-        tournamentId: parseInt(tournamentId),
-        teamId: parseInt(teamId)
+      if (confirmedCount >= tournament.maxTeams) {
+        throw new Error('Tournament has reached maximum number of teams');
       }
-    });
 
-    if (existingRegistration) {
-      throw new Error('Team is already registered for this tournament');
-    }
+      // 2. Vérifier l'équipe
+      const team = await tx.team.findUnique({
+        where: { id: parsedTeamId }
+      });
 
-    // Créer l'inscription
-    return await prisma.registration.create({
-      data: {
-        tournamentId: parseInt(tournamentId),
-        teamId: parseInt(teamId),
-        status: 'PENDING'
-      },
-      include: {
-        team: {
-          include: {
-            captain: {
-              select: {
-                id: true,
-                username: true,
-                email: true
-              }
+      if (!team) {
+        throw new Error('Team not found');
+      }
+
+      // ✅ CORRIGÉ : Utilise ownerId au lieu de captainId
+      if (team.ownerId !== userId) {
+        throw new Error('Only the team owner can register the team');
+      }
+
+      if (team.game !== tournament.game) {
+        throw new Error(`Team game (${team.game}) does not match tournament game (${tournament.game})`);
+      }
+
+      // 3. Vérifier doublon
+      const existingRegistration = await tx.registration.findFirst({
+        where: {
+          tournamentId: parsedTournamentId,
+          teamId: parsedTeamId
+        }
+      });
+
+      if (existingRegistration) {
+        throw new Error('Team is already registered for this tournament');
+      }
+
+      // 4. Créer l'inscription
+      return await tx.registration.create({
+        data: {
+          tournamentId: parsedTournamentId,
+          teamId: parsedTeamId,
+          status: 'PENDING'
+        },
+        include: {
+          team: {
+            include: {
+              owner: { select: this.userSelect }
+            }
+          },
+          tournament: {
+            select: {
+              id: true,
+              name: true,
+              game: true,
+              startDate: true,
+              status: true
             }
           }
-        },
-        tournament: {
-          select: {
-            id: true,
-            name: true,
-            game: true,
-            startDate: true,
-            status: true,
-            format: true
-          }
         }
-      }
+      });
     });
   }
 
-  
+  /**
+   * Inscription solo d'un joueur
+   */
   async registerPlayer(tournamentId, playerId, userId) {
-    // Vérifier que le tournoi existe
-    const tournament = await prisma.tournament.findUnique({
-      where: { id: parseInt(tournamentId) }
-    });
+    const parsedTournamentId = this.parseId(tournamentId, 'tournamentId');
+    const parsedPlayerId = this.parseId(playerId, 'playerId');
 
-    if (!tournament) {
-      throw new Error('Tournament not found');
-    }
+    return await this.transaction(async (tx) => {
+      // 1. Vérifier le tournoi
+      const tournament = await tx.tournament.findUnique({
+        where: { id: parsedTournamentId }
+      });
 
-    if (tournament.status !== 'OPEN') {
-      throw new Error('Tournament is not open for registration');
-    }
-
-    // Vérifier cohérence format
-    if (tournament.format === 'TEAM') {
-      throw new Error('Team tournaments only accept team registrations. Use POST /api/tournaments/:tournamentId/register with teamId instead.');
-    }
-
-    // Vérifier limite participants
-    const confirmedCount = await prisma.registration.count({
-      where: {
-        tournamentId: parseInt(tournamentId),
-        status: 'CONFIRMED'
+      if (!tournament) {
+        throw new Error('Tournament not found');
       }
-    });
 
-    if (confirmedCount >= tournament.maxParticipants) {
-      throw new Error('Tournament has reached maximum number of participants');
-    }
-
-    // Vérifier que le joueur existe
-    const player = await prisma.user.findUnique({
-      where: { id: parseInt(playerId) }
-    });
-
-    if (!player) {
-      throw new Error('Player not found');
-    }
-
-    // Vérifier que c'est bien le joueur qui s'inscrit lui-même
-    if (player.id !== userId) {
-      throw new Error('You can only register yourself for solo tournaments');
-    }
-
-    if (player.role !== 'PLAYER') {
-      throw new Error('Only users with PLAYER role can register for tournaments');
-    }
-
-    // Vérifier que le joueur n'est pas déjà inscrit
-    const existingRegistration = await prisma.registration.findFirst({
-      where: {
-        tournamentId: parseInt(tournamentId),
-        playerId: parseInt(playerId)
+      if (tournament.status !== 'UPCOMING') {
+        throw new Error('Tournament is not open for registration');
       }
-    });
 
-    if (existingRegistration) {
-      throw new Error('You are already registered for this tournament');
-    }
+      // 2. Vérifier le joueur
+      const player = await tx.user.findUnique({
+        where: { id: parsedPlayerId }
+      });
 
-    // Créer l'inscription
-    return await prisma.registration.create({
-      data: {
-        tournamentId: parseInt(tournamentId),
-        playerId: parseInt(playerId),
-        status: 'PENDING'
-      },
-      include: {
-        player: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
+      if (!player) {
+        throw new Error('Player not found');
+      }
+
+      if (player.id !== userId) {
+        throw new Error('You can only register yourself');
+      }
+
+      // 3. Vérifier doublon
+      const existingRegistration = await tx.registration.findFirst({
+        where: {
+          tournamentId: parsedTournamentId,
+          playerId: parsedPlayerId
+        }
+      });
+
+      if (existingRegistration) {
+        throw new Error('You are already registered for this tournament');
+      }
+
+      // 4. Créer l'inscription
+      return await tx.registration.create({
+        data: {
+          tournamentId: parsedTournamentId,
+          playerId: parsedPlayerId,
+          status: 'PENDING'
         },
-        tournament: {
-          select: {
-            id: true,
-            name: true,
-            game: true,
-            startDate: true,
-            status: true,
-            format: true
+        include: {
+          player: { select: this.userSelect },
+          tournament: {
+            select: {
+              id: true,
+              name: true,
+              game: true,
+              startDate: true,
+              status: true
+            }
           }
         }
-      }
+      });
     });
   }
 
+  /**
+   * Récupérer les inscriptions d'un tournoi
+   */
   async getTournamentRegistrations(tournamentId) {
+    const parsedId = this.parseId(tournamentId, 'tournamentId');
+
     return await prisma.registration.findMany({
-      where: {
-        tournamentId: parseInt(tournamentId)
-      },
+      where: { tournamentId: parsedId },
       include: {
         team: {
           include: {
-            captain: {
-              select: {
-                id: true,
-                username: true,
-                email: true
-              }
-            },
-            _count: {
-              select: { members: true }
-            }
+            owner: { select: this.userSelect },
+            _count: { select: { members: true } }
           }
         },
-        player: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        }
+        player: { select: this.userSelect }
       },
-      orderBy: {
-        id: 'asc'
-      }
+      orderBy: { createdAt: 'desc' }
     });
   }
 
+  /**
+   * Récupérer les inscriptions d'une équipe
+   */
   async getTeamRegistrations(teamId) {
+    const parsedId = this.parseId(teamId, 'teamId');
+
     return await prisma.registration.findMany({
-      where: {
-        teamId: parseInt(teamId)
-      },
+      where: { teamId: parsedId },
       include: {
         tournament: {
           include: {
-            organizer: {
-              select: {
-                id: true,
-                username: true,
-                email: true
-              }
-            }
+            organizer: { select: this.userSelect }
           }
         }
       },
-      orderBy: {
-        id: 'desc'
-      }
+      orderBy: { createdAt: 'desc' }
     });
   }
 
+  /**
+   * Mettre à jour le statut d'une inscription
+   */
   async updateRegistrationStatus(registrationId, status, userId, userRole) {
-    const registration = await prisma.registration.findUnique({
-      where: { id: parseInt(registrationId) },
-      include: {
-        tournament: true,
-        team: true,
-        player: true
-      }
+    const parsedId = this.parseId(registrationId, 'registrationId');
+
+    const registration = await this.findByIdOrFail(parsedId, {
+      tournament: true
     });
 
-    if (!registration) {
-      throw new Error('Registration not found');
-    }
-
-    // Seul l'organisateur du tournoi ou un admin peut changer le statut
-    if (registration.tournament.organizerId !== userId && userRole !== 'ADMIN') {
-      throw new Error('Not authorized to update this registration');
-    }
+    this.checkAuthorization(
+      registration.tournament.organizerId,
+      userId,
+      userRole,
+      'update registration status for'
+    );
 
     return await prisma.registration.update({
-      where: { id: parseInt(registrationId) },
+      where: { id: parsedId },
       data: { status },
       include: {
         team: {
           include: {
-            captain: {
-              select: {
-                id: true,
-                username: true,
-                email: true
-              }
-            }
+            owner: { select: this.userSelect }
           }
         },
-        player: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        },
+        player: { select: this.userSelect },
         tournament: {
           select: {
             id: true,
             name: true,
-            game: true,
-            format: true
+            game: true
           }
         }
       }
     });
   }
 
+  /**
+   * Annuler une inscription
+   */
   async cancelRegistration(registrationId, userId, userRole) {
-    const registration = await prisma.registration.findUnique({
-      where: { id: parseInt(registrationId) },
-      include: {
-        team: true,
-        player: true,
-        tournament: true
-      }
+    const parsedId = this.parseId(registrationId, 'registrationId');
+
+    const registration = await this.findByIdOrFail(parsedId, {
+      team: true,
+      tournament: true
     });
 
-    if (!registration) {
-      throw new Error('Registration not found');
+    if (registration.status === 'APPROVED') {
+      throw new Error('Cannot delete an approved registration. Change status to REJECTED first.');
     }
 
-  
-    if (registration.status === 'CONFIRMED') {
-      throw new Error('Cannot delete a confirmed registration. Please use PATCH to change status to WITHDRAWN instead.');
-    }
-
-    // Le capitaine de l'équipe, le joueur, l'organisateur ou un admin peuvent annuler
-    const canCancel = 
-      (registration.team && registration.team.captainId === userId) ||
-      (registration.player && registration.playerId === userId) ||
+    // ✅ CORRIGÉ : Utilise ownerId
+    const canCancel =
+      (registration.team && registration.team.ownerId === userId) ||
+      (registration.playerId === userId) ||
       registration.tournament.organizerId === userId ||
       userRole === 'ADMIN';
 
@@ -334,9 +274,9 @@ class RegistrationService {
     }
 
     await prisma.registration.delete({
-      where: { id: parseInt(registrationId) }
+      where: { id: parsedId }
     });
   }
 }
 
-export const registrationService = new RegistrationService();
+export default new RegistrationService();

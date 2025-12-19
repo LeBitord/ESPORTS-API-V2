@@ -1,95 +1,102 @@
-import { registrationService } from '../services/registration.service.js';
+import registrationService from '../services/registration.service.js';
+import BaseController from './base.controller.js';
 
-class RegistrationController {
+class RegistrationController extends BaseController {
   async register(req, res) {
     try {
       const { teamId, playerId } = req.body;
-      const tournamentId = req.params.tournamentId;
-      const userId = req.user.id;
+      const tournamentId = this.parseId(req.params.tournamentId);
 
-      // Vérifier qu'on a bien teamId OU playerId (pas les deux, pas aucun)
+      // Validation : teamId OU playerId (pas les deux, pas aucun)
       if ((teamId && playerId) || (!teamId && !playerId)) {
-        return res.status(400).json({
-          error: 'You must provide either teamId (for team tournaments) or playerId (for solo tournaments), but not both'
-        });
+        return this.error(
+          res,
+          'You must provide either teamId or playerId, but not both',
+          400
+        );
       }
 
       let registration;
 
       if (teamId) {
-        // Inscription d'équipe
+        const parsedTeamId = this.parseId(teamId, 'teamId');
         registration = await registrationService.registerTeam(
           tournamentId,
-          teamId,
-          userId
+          parsedTeamId,
+          req.user.id
         );
       } else {
-        // Inscription solo
+        const parsedPlayerId = this.parseId(playerId, 'playerId');
         registration = await registrationService.registerPlayer(
           tournamentId,
-          playerId,
-          userId
+          parsedPlayerId,
+          req.user.id
         );
       }
 
-      res.status(201).json(registration);
+      return this.success(res, registration, 'Registration successful', 201);
     } catch (error) {
-      console.error('Registration error:', error);
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'RegistrationController.register');
     }
   }
 
   async getTournamentRegistrations(req, res) {
     try {
-      const registrations = await registrationService.getTournamentRegistrations(
-        req.params.tournamentId
-      );
-      res.json(registrations);
+      const tournamentId = this.parseId(req.params.tournamentId);
+      
+      const registrations = await registrationService.getTournamentRegistrations(tournamentId);
+      
+      return this.success(res, registrations, 'Registrations retrieved successfully');
     } catch (error) {
-      console.error('Get registrations error:', error);
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'RegistrationController.getTournamentRegistrations');
     }
   }
 
   async getTeamRegistrations(req, res) {
     try {
-      const registrations = await registrationService.getTeamRegistrations(
-        req.params.teamId
-      );
-      res.json(registrations);
+      const teamId = this.parseId(req.params.teamId);
+      
+      const registrations = await registrationService.getTeamRegistrations(teamId);
+      
+      return this.success(res, registrations, 'Team registrations retrieved successfully');
     } catch (error) {
-      console.error('Get team registrations error:', error);
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'RegistrationController.getTeamRegistrations');
     }
   }
 
   async updateStatus(req, res) {
     try {
+      const registrationId = this.parseId(req.params.registrationId);
+      this.validateRequired(req.body, ['status']);
+      
       const { status } = req.body;
+      
       const registration = await registrationService.updateRegistrationStatus(
-        req.params.registrationId,
+        registrationId,
         status,
         req.user.id,
         req.user.role
       );
-      res.json(registration);
+      
+      return this.success(res, registration, 'Registration status updated successfully');
     } catch (error) {
-      console.error('Update status error:', error);
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'RegistrationController.updateStatus');
     }
   }
 
   async cancelRegistration(req, res) {
     try {
+      const registrationId = this.parseId(req.params.registrationId);
+      
       await registrationService.cancelRegistration(
-        req.params.registrationId,
+        registrationId,
         req.user.id,
         req.user.role
       );
-      res.json({ message: 'Registration cancelled successfully' });
+      
+      return this.success(res, null, 'Registration cancelled successfully');
     } catch (error) {
-      console.error('Cancel registration error:', error);
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'RegistrationController.cancelRegistration');
     }
   }
 }

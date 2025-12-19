@@ -1,160 +1,150 @@
 import matchService from '../services/match.service.js';
+import BaseController from './base.controller.js';
 
-class MatchController {
-  // Créer un match
+class MatchController extends BaseController {
   async createMatch(req, res) {
     try {
+      this.validateRequired(req.body, ['tournamentId', 'teamAId', 'teamBId', 'scheduledAt']);
+
       const { tournamentId, teamAId, teamBId, scheduledAt, phase } = req.body;
 
-      // Validation
-      if (!tournamentId || !teamAId || !teamBId || !scheduledAt) {
-        return res.status(400).json({
-          error: 'tournamentId, teamAId, teamBId and scheduledAt are required'
-        });
-      }
-
       const match = await matchService.createMatch({
-        tournamentId: parseInt(tournamentId),
-        teamAId: parseInt(teamAId),
-        teamBId: parseInt(teamBId),
+        tournamentId: this.parseId(tournamentId, 'tournamentId'),
+        teamAId: this.parseId(teamAId, 'teamAId'),
+        teamBId: this.parseId(teamBId, 'teamBId'),
         scheduledAt,
         phase
       });
 
-      res.status(201).json(match);
+      return this.success(res, match, 'Match created successfully', 201);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.createMatch');
     }
   }
 
-  // Obtenir tous les matchs
   async getAllMatches(req, res) {
     try {
       const matches = await matchService.getAllMatches();
-      res.json(matches);
+      
+      return this.success(res, matches, 'Matches retrieved successfully');
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.getAllMatches');
     }
   }
 
-  // Obtenir un match par ID
   async getMatchById(req, res) {
     try {
-      const match = await matchService.getMatchById(parseInt(req.params.id));
-      res.json(match);
+      const id = this.parseId(req.params.id);
+      const match = await matchService.getMatchById(id);
+      
+      return this.success(res, match, 'Match retrieved successfully');
     } catch (error) {
-      res.status(404).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.getMatchById');
     }
   }
 
-  // Obtenir les matchs d'un tournoi
   async getMatchesByTournament(req, res) {
     try {
-      const matches = await matchService.getMatchesByTournament(
-        parseInt(req.params.tournamentId)
-      );
-      res.json(matches);
+      const tournamentId = this.parseId(req.params.tournamentId);
+      const matches = await matchService.getMatchesByTournament(tournamentId);
+      
+      return this.success(res, matches, 'Tournament matches retrieved successfully');
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.getMatchesByTournament');
     }
   }
 
-  // Obtenir les matchs d'une équipe
   async getMatchesByTeam(req, res) {
     try {
-      const matches = await matchService.getMatchesByTeam(
-        parseInt(req.params.teamId)
-      );
-      res.json(matches);
+      const teamId = this.parseId(req.params.teamId);
+      const matches = await matchService.getMatchesByTeam(teamId);
+      
+      return this.success(res, matches, 'Team matches retrieved successfully');
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.getMatchesByTeam');
     }
   }
 
-    // Mettre à jour un match
   async updateMatch(req, res) {
     try {
+      const id = this.parseId(req.params.id);
       const { tournamentId, teamAId, teamBId, scheduledAt, phase } = req.body;
 
-      const match = await matchService.updateMatch(
-        parseInt(req.params.id),
-        {
-          tournamentId: tournamentId ? parseInt(tournamentId) : undefined,
-          teamAId: teamAId ? parseInt(teamAId) : undefined,
-          teamBId: teamBId ? parseInt(teamBId) : undefined,
-          scheduledAt,
-          phase
-        }
-      );
+      const updateData = {
+        ...(tournamentId && { tournamentId: this.parseId(tournamentId, 'tournamentId') }),
+        ...(teamAId && { teamAId: this.parseId(teamAId, 'teamAId') }),
+        ...(teamBId && { teamBId: this.parseId(teamBId, 'teamBId') }),
+        ...(scheduledAt && { scheduledAt }),
+        ...(phase && { phase })
+      };
 
-      res.json(match);
+      const match = await matchService.updateMatch(id, updateData);
+      
+      return this.success(res, match, 'Match updated successfully');
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.updateMatch');
     }
   }
 
-  // Démarrer un match
   async startMatch(req, res) {
     try {
-      const match = await matchService.startMatch(parseInt(req.params.id));
-      res.json(match);
+      const id = this.parseId(req.params.id);
+      const match = await matchService.startMatch(id);
+      
+      return this.success(res, match, 'Match started successfully');
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.startMatch');
     }
   }
 
-  // Mettre à jour le score
   async updateScore(req, res) {
     try {
+      const id = this.parseId(req.params.id);
+      this.validateRequired(req.body, ['scoreTeamA', 'scoreTeamB']);
+
       const { scoreTeamA, scoreTeamB } = req.body;
 
-      if (scoreTeamA === undefined || scoreTeamB === undefined) {
-        return res.status(400).json({
-          error: 'scoreTeamA and scoreTeamB are required'
-        });
-      }
+      const match = await matchService.updateScore(id, {
+        scoreTeamA: parseInt(scoreTeamA),
+        scoreTeamB: parseInt(scoreTeamB)
+      });
 
-      const match = await matchService.updateScore(
-        parseInt(req.params.id),
-        {
-          scoreTeamA: parseInt(scoreTeamA),
-          scoreTeamB: parseInt(scoreTeamB)
-        }
-      );
-
-      res.json(match);
+      return this.success(res, match, 'Score updated successfully');
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.updateScore');
     }
   }
 
-  // Terminer un match
   async completeMatch(req, res) {
     try {
-      const match = await matchService.completeMatch(parseInt(req.params.id));
-      res.json(match);
+      const id = this.parseId(req.params.id);
+      const match = await matchService.completeMatch(id);
+      
+      return this.success(res, match, 'Match completed successfully');
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.completeMatch');
     }
   }
 
-  // Annuler un match
   async cancelMatch(req, res) {
     try {
-      const match = await matchService.cancelMatch(parseInt(req.params.id));
-      res.json(match);
+      const id = this.parseId(req.params.id);
+      const match = await matchService.cancelMatch(id);
+      
+      return this.success(res, match, 'Match cancelled successfully');
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.cancelMatch');
     }
   }
 
-  // Supprimer un match
   async deleteMatch(req, res) {
     try {
-      await matchService.deleteMatch(parseInt(req.params.id));
-      res.status(204).send();
+      const id = this.parseId(req.params.id);
+      await matchService.deleteMatch(id);
+      
+      return this.success(res, null, 'Match deleted successfully', 204);
     } catch (error) {
-      res.status(404).json({ error: error.message });
+      return this.handleError(res, error, 'MatchController.deleteMatch');
     }
   }
 }

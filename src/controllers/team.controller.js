@@ -1,81 +1,104 @@
 import teamService from '../services/team.service.js';
+import BaseController from './base.controller.js';
 
-class TeamController {
+class TeamController extends BaseController {
   async createTeam(req, res) {
     try {
+      this.validateRequired(req.body, ['name']);
+
       const team = await teamService.createTeam(req.body, req.user.id);
-      res.status(201).json(team);
+      
+      return this.success(res, team, 'Team created successfully', 201);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'TeamController.createTeam');
     }
   }
 
   async getAllTeams(req, res) {
     try {
       const teams = await teamService.getAllTeams();
-      res.json(teams);
+      
+      return this.success(res, teams, 'Teams retrieved successfully');
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      return this.handleError(res, error, 'TeamController.getAllTeams');
     }
   }
 
   async getTeamById(req, res) {
     try {
-      const team = await teamService.getTeamById(req.params.id);
-      res.json(team);
+      const id = this.parseId(req.params.id);
+      const team = await teamService.getTeamById(id);
+      
+      return this.success(res, team, 'Team retrieved successfully');
     } catch (error) {
-      res.status(404).json({ error: error.message });
+      return this.handleError(res, error, 'TeamController.getTeamById');
     }
   }
 
   async updateTeam(req, res) {
     try {
+      const id = this.parseId(req.params.id);
+      
       const team = await teamService.updateTeam(
-        req.params.id,
+        id,
         req.body,
         req.user.id,
         req.user.role
       );
-      res.json(team);
+      
+      return this.success(res, team, 'Team updated successfully');
     } catch (error) {
-      res.status(403).json({ error: error.message });
+      return this.handleError(res, error, 'TeamController.updateTeam');
     }
   }
 
   async deleteTeam(req, res) {
     try {
-      await teamService.deleteTeam(req.params.id, req.user.id, req.user.role);
-      res.status(204).send();
+      const id = this.parseId(req.params.id);
+      
+      await teamService.deleteTeam(id, req.user.id, req.user.role);
+      
+      return this.success(res, null, 'Team deleted successfully', 204);
     } catch (error) {
-      res.status(403).json({ error: error.message });
+      return this.handleError(res, error, 'TeamController.deleteTeam');
     }
   }
 
   async addMember(req, res) {
     try {
+      const teamId = this.parseId(req.params.id);
+      this.validateRequired(req.body, ['userId']);
+      
+      const userId = this.parseId(req.body.userId, 'userId');
+      
       const member = await teamService.addMember(
-        req.params.id,
+        teamId,
         req.user.id,
-        req.body.userId,
+        userId,
         req.user.role
       );
-      res.status(201).json(member);
+      
+      return this.success(res, member, 'Member added successfully', 201);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'TeamController.addMember');
     }
   }
 
   async removeMember(req, res) {
     try {
+      const teamId = this.parseId(req.params.id);
+      const memberId = this.parseId(req.params.memberId);
+      
       await teamService.removeMember(
-        req.params.id,
-        req.params.memberId,
+        teamId,
+        memberId,
         req.user.id,
         req.user.role
       );
-      res.status(204).send();
+      
+      return this.success(res, null, 'Member removed successfully', 204);
     } catch (error) {
-      res.status(403).json({ error: error.message });
+      return this.handleError(res, error, 'TeamController.removeMember');
     }
   }
 }

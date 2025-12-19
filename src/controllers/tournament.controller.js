@@ -1,16 +1,20 @@
 import tournamentService from '../services/tournament.service.js';
+import BaseController from './base.controller.js';
 
-class TournamentController {
+class TournamentController extends BaseController {
   async create(req, res) {
     try {
+      // Validation
+      this.validateRequired(req.body, ['name', 'game', 'maxParticipants', 'startDate']);
+
       const tournament = await tournamentService.createTournament(
         req.body,
         req.user.id
       );
-      
-      res.status(201).json(tournament);
+
+      return this.success(res, tournament, 'Tournament created successfully', 201);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'TournamentController.create');
     }
   }
 
@@ -18,50 +22,54 @@ class TournamentController {
     try {
       const { status, game } = req.query;
       const tournaments = await tournamentService.getAllTournaments({ status, game });
-      
-      res.json(tournaments);
+
+      return this.success(res, tournaments, 'Tournaments retrieved successfully');
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      return this.handleError(res, error, 'TournamentController.getAll');
     }
   }
 
   async getById(req, res) {
     try {
-      const tournament = await tournamentService.getTournamentById(req.params.id);
-      res.json(tournament);
+      const id = this.parseId(req.params.id);
+      const tournament = await tournamentService.getTournamentById(id);
+
+      return this.success(res, tournament, 'Tournament retrieved successfully');
     } catch (error) {
-      res.status(404).json({ error: error.message });
+      return this.handleError(res, error, 'TournamentController.getById');
     }
   }
 
   async update(req, res) {
     try {
+      const id = this.parseId(req.params.id);
+      
       const tournament = await tournamentService.updateTournament(
-        req.params.id,
+        id,
         req.body,
         req.user.id,
         req.user.role
       );
-      
-      res.json(tournament);
+
+      return this.success(res, tournament, 'Tournament updated successfully');
     } catch (error) {
-      const status = error.message.includes('Not authorized') ? 403 : 400;
-      res.status(status).json({ error: error.message });
+      return this.handleError(res, error, 'TournamentController.update');
     }
   }
 
   async delete(req, res) {
     try {
+      const id = this.parseId(req.params.id);
+      
       await tournamentService.deleteTournament(
-        req.params.id,
+        id,
         req.user.id,
         req.user.role
       );
-      
-      res.status(204).send();
+
+      return this.success(res, null, 'Tournament deleted successfully', 204);
     } catch (error) {
-      const status = error.message.includes('Not authorized') ? 403 : 400;
-      res.status(status).json({ error: error.message });
+      return this.handleError(res, error, 'TournamentController.delete');
     }
   }
 }

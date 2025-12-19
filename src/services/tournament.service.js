@@ -1,134 +1,144 @@
 import prisma from '../config/database.js';
+import BaseService from './base.service.js';
 
-class TournamentService {
+class TournamentService extends BaseService {
+  constructor() {
+    super('tournament');
+  }
+
+  /**
+   * Créer un tournoi
+   */
   async createTournament(data, organizerId) {
+    // Validations
+    const startDate = this.validateDate(data.startDate, 'startDate');
+    const endDate = this.validateDate(data.endDate, 'endDate');
+
+    if (startDate >= endDate) {
+      throw new Error('Start date must be before end date');
+    }
+
+    const prizePool = this.validatePositive(data.prizePool, 'prizePool');
+    const maxTeams = this.validatePositive(data.maxTeams, 'maxTeams');
+
     return await prisma.tournament.create({
       data: {
         name: data.name,
         game: data.game,
-        startDate: new Date(data.startDate),
-        endDate: new Date(data.endDate),
-        prizePool: data.prizePool,
-        maxTeams: data.maxTeams,
-        status: data.status,
+        startDate,
+        endDate,
+        prizePool,
+        maxTeams,
+        status: data.status || 'UPCOMING',
         rules: data.rules || null,
         organizer: {
-          connect: { id: organizerId }  // ← Utilise connect au lieu de organizerId
+          connect: { id: organizerId }
         }
       },
       include: {
-        organizer: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        }
+        organizer: { select: this.userSelect }
       }
     });
   }
 
-  async getAllTournaments() {
+  /**
+   * Récupérer tous les tournois
+   */
+  async getAllTournaments(filters = {}) {
+    const where = {};
+
+    if (filters.status) {
+      where.status = filters.status;
+    }
+
+    if (filters.game) {
+      where.game = filters.game;
+    }
+
     return await prisma.tournament.findMany({
+      where,
       include: {
-        organizer: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        },
-        _count: {
-          select: {
-            registrations: true
-          }
-        }
+        organizer: { select: this.userSelect },
+        _count: { select: { registrations: true } }
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { createdAt: 'desc' }
     });
   }
 
+  /**
+   * Récupérer un tournoi par ID
+   */
   async getTournamentById(id) {
-    const tournament = await prisma.tournament.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        organizer: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        },
-        registrations: {
-          include: {
-            team: {
-              select: {
-                id: true,
-                name: true
-              }
+    return await this.findByIdOrFail(id, {
+      organizer: { select: this.userSelect },
+      registrations: {
+        include: {
+          team: {
+            select: {
+              id: true,
+              name: true,
+              tag: true
             }
           }
         }
-      }
+      },
+      _count: { select: { registrations: true, matches: true } }
     });
-
-    if (!tournament) {
-      throw new Error('Tournament not found');
-    }
-
-    return tournament;
   }
 
+  /**
+   * Mettre à jour un tournoi
+   */
   async updateTournament(id, data, userId, userRole) {
-    const tournament = await this.getTournamentById(id);
+    const parsedId = this.parseId(id);
+    const tournament = await this.getTournamentById(parsedId);
 
-    // Vérifie que c'est l'organisateur ou un admin
-    if (tournament.organizer.id !== userId && userRole !== 'ADMIN') {
-      throw new Error('Not authorized to update this tournament');
-    }
+    this.checkAuthorization(tournament.organizerId, userId, userRole, 'update');
 
-    const updateData = {
-      name: data.name,
-      game: data.game,
-      prizePool: data.prizePool,
-      maxTeams: data.maxTeams,
-      status: data.status,
-      rules: data.rules
-    };
+    const updateData = {};
+
+    if (data.name) updateData.name = data.name;
+    if (data.game) updateData.game = data.game;
+    if (data.prizePool) updateData.prizePool = this.validatePositive(data.prizePool, 'prizePool');
+    if (data.maxTeams) updateData.maxTeams = this.validatePositive(data.maxTeams, 'maxTeams');
+    if (data.status) updateData.status = data.status;
+    if (data.rules !== undefined) updateData.rules = data.rules;
 
     if (data.startDate) {
-      updateData.startDate = new Date(data.startDate);
+      updateData.startDate = this.validateDate(data.startDate, 'startDate');
     }
+
     if (data.endDate) {
-      updateData.endDate = new Date(data.endDate);
+      updateData.endDate = this.validateDate(data.endDate, 'endDate');
+    }
+
+    // Valider cohérence des dates
+    if (updateData.startDate && updateData.endDate) {
+      if (updateData.startDate >= updateData.endDate) {
+        throw new Error('Start date must be before end date');
+      }
     }
 
     return await prisma.tournament.update({
-      where: { id: parseInt(id) },
+      where: { id: parsedId },
       data: updateData,
       include: {
-        organizer: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        }
+        organizer: { select: this.userSelect }
       }
     });
   }
 
+  /**
+   * Supprimer un tournoi
+   */
   async deleteTournament(id, userId, userRole) {
-    const tournament = await this.getTournamentById(id);
+    const parsedId = this.parseId(id);
+    const tournament = await this.getTournamentById(parsedId);
 
-    if (tournament.organizer.id !== userId && userRole !== 'ADMIN') {
-      throw new Error('Not authorized to delete this tournament');
-    }
+    this.checkAuthorization(tournament.organizerId, userId, userRole, 'delete');
 
     await prisma.tournament.delete({
-      where: { id: parseInt(id) }
+      where: { id: parsedId }
     });
   }
 }
