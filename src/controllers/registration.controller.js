@@ -1,16 +1,40 @@
 import { registrationService } from '../services/registration.service.js';
 
 class RegistrationController {
-  async registerTeam(req, res) {
+  async register(req, res) {
     try {
-      const registration = await registrationService.registerTeam(
-        parseInt(req.params.tournamentId),
-        req.body.teamId,
-        req.user.id
-      );
+      const { teamId, playerId } = req.body;
+      const tournamentId = req.params.tournamentId;
+      const userId = req.user.id;
+
+      // Vérifier qu'on a bien teamId OU playerId (pas les deux, pas aucun)
+      if ((teamId && playerId) || (!teamId && !playerId)) {
+        return res.status(400).json({
+          error: 'You must provide either teamId (for team tournaments) or playerId (for solo tournaments), but not both'
+        });
+      }
+
+      let registration;
+
+      if (teamId) {
+        // Inscription d'équipe
+        registration = await registrationService.registerTeam(
+          tournamentId,
+          teamId,
+          userId
+        );
+      } else {
+        // Inscription solo
+        registration = await registrationService.registerPlayer(
+          tournamentId,
+          playerId,
+          userId
+        );
+      }
+
       res.status(201).json(registration);
     } catch (error) {
-      console.error('❌ Registration error:', error);
+      console.error('Registration error:', error);
       res.status(400).json({ error: error.message });
     }
   }
@@ -18,48 +42,53 @@ class RegistrationController {
   async getTournamentRegistrations(req, res) {
     try {
       const registrations = await registrationService.getTournamentRegistrations(
-        parseInt(req.params.tournamentId)
+        req.params.tournamentId
       );
       res.json(registrations);
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('Get registrations error:', error);
+      res.status(400).json({ error: error.message });
     }
   }
 
   async getTeamRegistrations(req, res) {
     try {
       const registrations = await registrationService.getTeamRegistrations(
-        parseInt(req.params.teamId)
+        req.params.teamId
       );
       res.json(registrations);
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('Get team registrations error:', error);
+      res.status(400).json({ error: error.message });
     }
   }
 
-async updateRegistrationStatus(req, res) {
-  try {
-    const registration = await registrationService.updateRegistrationStatus(
-      parseInt(req.params.id),
-      req.body.status,
-      req.user.id,
-      req.user.role
-    );
-    res.json(registration);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
+  async updateStatus(req, res) {
+    try {
+      const { status } = req.body;
+      const registration = await registrationService.updateRegistrationStatus(
+        req.params.registrationId,
+        status,
+        req.user.id,
+        req.user.role
+      );
+      res.json(registration);
+    } catch (error) {
+      console.error('Update status error:', error);
+      res.status(400).json({ error: error.message });
+    }
   }
-}
-
 
   async cancelRegistration(req, res) {
     try {
       await registrationService.cancelRegistration(
-        parseInt(req.params.id),
-        req.user.id
+        req.params.registrationId,
+        req.user.id,
+        req.user.role
       );
-      res.status(204).send();
+      res.json({ message: 'Registration cancelled successfully' });
     } catch (error) {
+      console.error('Cancel registration error:', error);
       res.status(400).json({ error: error.message });
     }
   }
